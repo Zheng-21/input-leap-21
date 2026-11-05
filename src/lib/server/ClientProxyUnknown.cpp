@@ -173,7 +173,7 @@ void ClientProxyUnknown::handle_data()
 
         {
             std::unique_ptr<IClientConnection> conn =
-                    std::make_unique<ClientConnectionByStream>(std::move(stream_));
+                    std::make_unique<ClientConnectionByStream>(std::move(stream_), m_events);
 
             if (Log::getInstance()->getFilter() >= kDEBUG1) {
                 conn = std::make_unique<ClientConnectionLoggingWrapper>(name, std::move(conn));

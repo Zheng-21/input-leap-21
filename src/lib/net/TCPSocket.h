@@ -20,6 +20,7 @@
 
 #include "Fwd.h"
 #include "base/EventTarget.h"
+#include "base/InputStatistics.h"
 #include "net/IDataSocket.h"
 #include "net/ISocketMultiplexerJob.h"
 #include "io/StreamBuffer.h"
@@ -111,6 +112,9 @@ private:
     std::condition_variable flushed_cv_;
     bool is_flushed_ = true;
     SocketMultiplexer* m_socketMultiplexer;
+    InputStatistics output_size_stats_;
+    InputStatistics output_age_stats_;
+    InputStatistics::Clock::time_point output_started_at_;
 };
 
 } // namespace inputleap

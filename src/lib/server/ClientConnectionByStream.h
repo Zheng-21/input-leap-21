@@ -17,6 +17,8 @@
 #pragma once
 
 #include "IClientConnection.h"
+#include "base/EventTarget.h"
+#include "base/InputStatistics.h"
 #include <memory>
 
 namespace inputleap {
@@ -26,7 +28,7 @@ class IStream;
 /// Writes protocol messages to IStream instance
 class ClientConnectionByStream : public IClientConnection {
 public:
-    ClientConnectionByStream(std::unique_ptr<IStream> stream);
+    ClientConnectionByStream(std::unique_ptr<IStream> stream, IEventQueue* events);
     ~ClientConnectionByStream() override;
 
     IStream* get_stream() override { return stream_.get(); }
@@ -62,7 +64,20 @@ public:
     void close() override;
 
 private:
+    void queue_mouse(bool relative, std::int32_t x, std::int32_t y);
+    void flush_mouse();
+
     std::unique_ptr<IStream> stream_;
+    IEventQueue* events_;
+    EventTarget mouse_target_;
+    bool mouse_flush_pending_ = false;
+    bool mouse_pending_ = false;
+    bool mouse_relative_ = false;
+    std::int32_t mouse_x_ = 0, mouse_y_ = 0;
+    unsigned int mouse_count_ = 0;
+    InputStatistics::Clock::time_point mouse_queued_at_;
+    InputStatistics mouse_wait_stats_;
+    InputStatistics mouse_merge_stats_;
 };
 
 } // namespace inputleap

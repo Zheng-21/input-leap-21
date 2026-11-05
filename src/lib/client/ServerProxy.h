@@ -24,6 +24,7 @@
 #include "base/Fwd.h"
 #include "base/Event.h"
 #include "base/EventTarget.h"
+#include "base/InputStatistics.h"
 
 namespace inputleap {
 
@@ -61,7 +62,7 @@ public:
     void sendDragInfo(std::uint32_t fileCount, const char* info, size_t size);
 
 #ifdef INPUTLEAP_TEST_ENV
-    void handleDataForTest() { handleData(Event(), nullptr); }
+    void handleDataForTest() { handle_data(); }
 #endif
 
 protected:
@@ -72,6 +73,7 @@ protected:
 private:
     // if compressing mouse motion then send the last motion now
     void flushCompressedMouse();
+    void inject_mouse(bool relative, std::int32_t x, std::int32_t y);
 
     void sendInfo(const ClientInfo&);
 
@@ -130,6 +132,10 @@ private:
 
     MessageParser m_parser;
     IEventQueue* m_events;
+    bool input_continue_pending_ = false;
+    InputStatistics batch_time_stats_;
+    InputStatistics batch_size_stats_;
+    InputStatistics injection_stats_;
 };
 
 } // namespace inputleap

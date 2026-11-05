@@ -62,7 +62,14 @@ ServerProxy::ServerProxy(Client* client, inputleap::IStream* stream, IEventQueue
 
     // handle data on stream
     m_events->add_handler(EventType::STREAM_INPUT_READY, m_stream->get_event_target(),
-                          [this](const auto& e){ handle_data(); });
+                          [this](const auto& e){
+                              if (!input_continue_pending_) { handle_data(); }
+                          });
+    m_events->add_handler(EventType::CLIENT_INPUT_CONTINUE, this,
+                          [this](const auto&) {
+                              input_continue_pending_ = false;
+                              handle_data();
+                          });
     m_events->add_handler(EventType::CLIPBOARD_SENDING, this,
                           [this](const auto& e){ handle_clipboard_sending_event(e); });
 
@@ -75,6 +82,7 @@ ServerProxy::~ServerProxy()
     setKeepAliveRate(-1.0);
     m_events->remove_handler(EventType::STREAM_INPUT_READY, m_stream->get_event_target());
     m_events->remove_handler(EventType::CLIPBOARD_SENDING, this);
+    m_events->remove_handler(EventType::CLIENT_INPUT_CONTINUE, this);
 }
 
 void
@@ -102,7 +110,9 @@ ServerProxy::setKeepAliveRate(double rate)
 
 void ServerProxy::handle_data()
 {
-    // handle messages until there are no more.  first read message code.
+    const auto started = InputStatistics::Clock::now();
+    unsigned int messages = 0;
+    // Process a bounded batch. First read the message code.
     std::uint8_t code[4];
     std::uint32_t n = m_stream->read(code, 4);
     while (n != 0) {
@@ -140,11 +150,26 @@ void ServerProxy::handle_data()
             return;
         }
 
+        ++messages;
+        // Yield between complete protocol messages, never in a packet body.
+        // A single expensive message can still exceed this cooperative budget.
+        if (messages >= 64 || InputStatistics::Clock::now() - started >=
+                                  std::chrono::milliseconds(2)) {
+            if (m_stream->isReady() && !input_continue_pending_) {
+                input_continue_pending_ = true;
+                m_events->add_event(EventType::CLIENT_INPUT_CONTINUE, this);
+            }
+            break;
+        }
+
         // next message
         n = m_stream->read(code, 4);
     }
 
     flushCompressedMouse();
+    batch_time_stats_.record("receive-batch", "ms",
+        std::chrono::duration<double, std::milli>(InputStatistics::Clock::now() - started).count());
+    batch_size_stats_.record("receive-batch-size", "messages", messages);
 }
 
 ServerProxy::EResult ServerProxy::parseHandshakeMessage(const std::uint8_t* code)
@@ -372,13 +397,29 @@ ServerProxy::flushCompressedMouse()
 {
     if (m_compressMouse) {
         m_compressMouse = false;
-        m_client->mouseMove(m_xMouse, m_yMouse);
+        inject_mouse(false, m_xMouse, m_yMouse);
     }
     if (m_compressMouseRelative) {
         m_compressMouseRelative = false;
-        m_client->mouseRelativeMove(m_dxMouse, m_dyMouse);
+        inject_mouse(true, m_dxMouse, m_dyMouse);
         m_dxMouse = 0;
         m_dyMouse = 0;
+    }
+}
+
+void ServerProxy::inject_mouse(bool relative, std::int32_t x, std::int32_t y)
+{
+    const auto started = injection_stats_.enabled() ? InputStatistics::Clock::now() :
+                                                    InputStatistics::Clock::time_point{};
+    if (relative) {
+        m_client->mouseRelativeMove(x, y);
+    }
+    else {
+        m_client->mouseMove(x, y);
+    }
+    if (injection_stats_.enabled()) {
+        injection_stats_.record("mouse-injection-call", "ms",
+            std::chrono::duration<double, std::milli>(InputStatistics::Clock::now() - started).count());
     }
 }
 
@@ -721,7 +762,7 @@ ServerProxy::mouseMove()
 
     // forward
     if (!ignore) {
-        m_client->mouseMove(x, y);
+        inject_mouse(false, x, y);
     }
 }
 
@@ -751,7 +792,7 @@ ServerProxy::mouseRelativeMove()
 
     // forward
     if (!ignore) {
-        m_client->mouseRelativeMove(dx, dy);
+        inject_mouse(true, dx, dy);
     }
 }
 

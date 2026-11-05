@@ -169,6 +169,12 @@ void TCPSocket::write(const void* buffer, std::uint32_t n)
         // copy data to the output buffer
         wasEmpty = (m_outputBuffer.getSize() == 0);
         m_outputBuffer.write(buffer, n);
+        if (output_size_stats_.enabled()) {
+            if (wasEmpty) {
+                output_started_at_ = InputStatistics::Clock::now();
+            }
+            output_size_stats_.record("tcp-output-buffer", "bytes", m_outputBuffer.getSize());
+        }
 
         // there's data to write
         is_flushed_ = false;
@@ -449,6 +455,10 @@ void TCPSocket::sendEvent(EventType type)
 void
 TCPSocket::discardWrittenData(int bytesWrote)
 {
+    if (bytesWrote > 0 && output_age_stats_.enabled()) {
+        output_age_stats_.record("tcp-output-busy-age", "ms",
+            std::chrono::duration<double, std::milli>(InputStatistics::Clock::now() - output_started_at_).count());
+    }
     m_outputBuffer.pop(bytesWrote);
     if (m_outputBuffer.getSize() == 0) {
         sendEvent(EventType::STREAM_OUTPUT_FLUSHED);

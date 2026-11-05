@@ -52,6 +52,12 @@ enum class EventType : std::uint32_t {
     /// A stream sends this event when \c read() will return with data.
     STREAM_INPUT_READY,
 
+    /// Continue a bounded batch of client protocol messages.
+    CLIENT_INPUT_CONTINUE,
+
+    /// Serialize consecutive mouse movements after queued input has been processed.
+    CLIENT_MOUSE_FLUSH,
+
     /** A stream sends this event when the output buffer has been flushed. If there have been no
         writes since the event was posted, calling \c shutdownOutput() or close() will not discard
         any data and \c flush() will return immediately.
