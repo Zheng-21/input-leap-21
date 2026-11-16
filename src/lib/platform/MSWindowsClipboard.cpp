@@ -109,7 +109,13 @@ MSWindowsClipboard::add(EFormat format, const std::string& data)
             HANDLE win32Data = converter->fromIClipboard(data);
             if (win32Data != nullptr) {
                 UINT win32Format = converter->getWin32Format();
-                m_facade->write(win32Data, win32Format);
+                if (!m_facade->write(win32Data, win32Format)) {
+                    LOG_WARN("failed to write clipboard format %u", win32Format);
+                    m_succeeded = false;
+                }
+            } else {
+                LOG_WARN("failed to convert clipboard format %d", format);
+                m_succeeded = false;
             }
         }
     }
@@ -130,6 +136,7 @@ MSWindowsClipboard::open(Time time) const
     }
 
     m_time = time;
+    m_succeeded = true;
 
     return true;
 }
@@ -186,6 +193,8 @@ std::string MSWindowsClipboard::get(EFormat format) const
         // nb: can't cause this using integ tests; this is only caused when
         // the selected converter returns an invalid format -- which you
         // cannot cause using public functions.
+        LOG_WARN("failed to read clipboard format %u: %lu", converter->getWin32Format(), GetLastError());
+        m_succeeded = false;
         return {};
     }
 

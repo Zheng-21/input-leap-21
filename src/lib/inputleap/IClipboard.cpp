@@ -22,15 +22,35 @@
 
 namespace inputleap {
 
-void IClipboard::unmarshall(IClipboard* clipboard, const std::string& data, Time time)
+bool IClipboard::unmarshall(IClipboard* clipboard, const std::string& data, Time time)
 {
     assert(clipboard != nullptr);
 
+    // Validate the complete payload before changing the destination clipboard.
+    if (data.size() < 4) return false;
     const char* index = data.data();
+    size_t remaining = data.size();
+    const std::uint32_t numFormats = readUInt32(index);
+    index += 4;
+    remaining -= 4;
+    for (std::uint32_t i = 0; i < numFormats; ++i) {
+        if (remaining < 8) return false;
+        const std::uint32_t size = readUInt32(index + 4);
+        index += 8;
+        remaining -= 8;
+        if (size > remaining) return false;
+        index += size;
+        remaining -= size;
+    }
+    if (remaining != 0) return false;
+    index = data.data();
 
     if (clipboard->open(time)) {
         // clear existing data
-        clipboard->clear();
+        if (!clipboard->clear()) {
+            clipboard->close();
+            return false;
+        }
 
         // read the number of formats
         const std::uint32_t numFormats = readUInt32(index);
@@ -39,8 +59,7 @@ void IClipboard::unmarshall(IClipboard* clipboard, const std::string& data, Time
         // read each format
         for (std::uint32_t i = 0; i < numFormats; ++i) {
             // get the format id
-            IClipboard::EFormat format =
-                static_cast<IClipboard::EFormat>(readUInt32(index));
+            const std::uint32_t format = readUInt32(index);
             index += 4;
 
             // get the size of the format data
@@ -50,15 +69,18 @@ void IClipboard::unmarshall(IClipboard* clipboard, const std::string& data, Time
             // save the data if it's a known format.  if either the client
             // or server supports more clipboard formats than the other
             // then one of them will get a format >= kNumFormats here.
-            if (format <IClipboard::kNumFormats) {
-                clipboard->add(format, std::string(index, size));
+            if (format < IClipboard::kNumFormats) {
+                clipboard->add(static_cast<IClipboard::EFormat>(format), std::string(index, size));
             }
             index += size;
         }
 
         // done
+        const bool success = clipboard->succeeded();
         clipboard->close();
+        return success;
     }
+    return false;
 }
 
 std::string IClipboard::marshall(const IClipboard* clipboard)
@@ -126,16 +148,15 @@ IClipboard::copy(IClipboard* dst, const IClipboard* src, Time time)
 
     bool success = false;
     if (src->open(time)) {
-        if (dst->open(time)) {
+        std::vector<std::pair<EFormat, std::string>> formats;
+        for (std::int32_t format = 0; format != IClipboard::kNumFormats; ++format) {
+            EFormat eFormat = static_cast<EFormat>(format);
+            if (src->has(eFormat)) formats.emplace_back(eFormat, src->get(eFormat));
+        }
+        if (src->succeeded() && dst->open(time)) {
             if (dst->clear()) {
-                for (std::int32_t format = 0;
-                                format != IClipboard::kNumFormats; ++format) {
-                    IClipboard::EFormat eFormat = static_cast<IClipboard::EFormat>(format);
-                    if (src->has(eFormat)) {
-                        dst->add(eFormat, src->get(eFormat));
-                    }
-                }
-                success = true;
+                for (const auto& format : formats) dst->add(format.first, format.second);
+                success = dst->succeeded();
             }
             dst->close();
         }

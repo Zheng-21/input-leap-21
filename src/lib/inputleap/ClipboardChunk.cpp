@@ -20,13 +20,9 @@
 #include "inputleap/ProtocolUtil.h"
 #include "inputleap/protocol_types.h"
 #include "io/IStream.h"
-#include "base/Log.h"
-#include "base/String.h"
-#include <cstring>
+#include <limits>
 
 namespace inputleap {
-
-size_t ClipboardChunk::s_expectedSize = 0;
 
 ClipboardChunk ClipboardChunk::start(ClipboardID id, std::uint32_t sequence,
                                      const std::size_t& size)
@@ -59,8 +55,8 @@ ClipboardChunk ClipboardChunk::end(ClipboardID id, std::uint32_t sequence)
     return chunk;
 }
 
-int ClipboardChunk::assemble(inputleap::IStream* stream, std::string& dataCached,
-                             ClipboardID& id, std::uint32_t& sequence)
+int ClipboardAssembler::assemble(inputleap::IStream* stream, ClipboardID& id,
+                                 std::uint32_t& sequence, size_t maxSize)
 {
     std::uint8_t mark;
     std::string data;
@@ -68,30 +64,55 @@ int ClipboardChunk::assemble(inputleap::IStream* stream, std::string& dataCached
     if (!ProtocolUtil::readf(stream, kMsgDClipboard + 4, &id, &sequence, &mark, &data)) {
         return kError;
     }
+    return accept(id, sequence, mark, data, maxSize);
+}
 
+int ClipboardAssembler::accept(ClipboardID id, std::uint32_t sequence, std::uint8_t mark,
+                               const std::string& data, size_t maxSize)
+{
+    if (id >= kClipboardEnd) return kError;
+    State& state = states_[id];
     if (mark == kDataStart) {
-        s_expectedSize = inputleap::string::stringToSizeType(data);
-        LOG_DEBUG("start receiving clipboard data");
-        dataCached.clear();
+        size_t expected = 0;
+        if (data.empty()) {
+            state.active = false;
+            return kError;
+        }
+        for (char c : data) {
+            if (c < '0' || c > '9' || expected > ((std::numeric_limits<size_t>::max)() - (c - '0')) / 10) {
+                state.active = false;
+                return kError;
+            }
+            expected = expected * 10 + (c - '0');
+        }
+        if (expected > maxSize) {
+            state.active = false;
+            return kError;
+        }
+        state.expected = expected;
+        state.sequence = sequence;
+        state.active = true;
+        state.data.clear();
         return kStart;
     }
-    else if (mark == kDataChunk) {
-        dataCached.append(data);
+    if (!state.active || state.sequence != sequence) return kError;
+    if (mark == kDataChunk) {
+        if (data.size() > state.expected - state.data.size()) {
+            state.active = false;
+            return kError;
+        }
+        state.data.append(data);
         return kNotFinish;
     }
     else if (mark == kDataEnd) {
-        // validate
-        if (id >= kClipboardEnd) {
-            return kError;
-        }
-        else if (s_expectedSize != dataCached.size()) {
-            LOG_ERR("corrupted clipboard data, expected size=%zd actual size=%zd", s_expectedSize, dataCached.size());
+        state.active = false;
+        if (state.expected != state.data.size()) {
             return kError;
         }
         return kFinish;
     }
 
-    LOG_ERR("clipboard transmission failed: unknown error");
+    state.active = false;
     return kError;
 }
 

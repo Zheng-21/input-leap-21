@@ -117,6 +117,8 @@ public:
     //! Return true if received file size is valid
     bool isReceivedFileSizeValid();
 
+    size_t maximumClipboardSize() const { return m_maximumClipboardSize; }
+
     //! Return expected file size
     size_t& getExpectedFileSize() { return m_expectedFileSize; }
 

@@ -19,6 +19,7 @@
 #pragma once
 
 #include "inputleap/clipboard_types.h"
+#include "inputleap/ClipboardChunk.h"
 #include "inputleap/key_types.h"
 #include "inputleap/Fwd.h"
 #include "base/Fwd.h"
@@ -136,6 +137,7 @@ private:
     InputStatistics batch_time_stats_;
     InputStatistics batch_size_stats_;
     InputStatistics injection_stats_;
+    ClipboardAssembler clipboard_assembler_;
 };
 
 } // namespace inputleap

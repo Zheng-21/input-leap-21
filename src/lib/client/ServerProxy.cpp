@@ -593,25 +593,28 @@ void
 ServerProxy::setClipboard()
 {
     // parse
-    static std::string dataCached;
     ClipboardID id;
     std::uint32_t seq;
 
-    int r = ClipboardChunk::assemble(m_stream, dataCached, id, seq);
+    int r = clipboard_assembler_.assemble(m_stream, id, seq, m_client->maximumClipboardSize());
 
     if (r == kStart) {
-        size_t size = ClipboardChunk::getExpectedSize();
+        size_t size = clipboard_assembler_.expectedSize(id);
         LOG_DEBUG("receiving clipboard %d size=%zd", id, size);
     }
     else if (r == kFinish) {
-        LOG_DEBUG("received clipboard %d size=%zd", id, dataCached.size());
+        LOG_DEBUG("received clipboard %d size=%zd", id, clipboard_assembler_.data(id).size());
 
         // forward
         Clipboard clipboard;
-        clipboard.unmarshall(dataCached, 0);
+        if (!clipboard.unmarshall(clipboard_assembler_.data(id), 0)) {
+            LOG_WARN("invalid clipboard data for clipboard %d", id);
+            return;
+        }
         m_client->setClipboard(id, &clipboard);
-
-        LOG_INFO("clipboard was updated");
+    }
+    else if (r == kError) {
+        LOG_WARN("invalid or oversized clipboard transfer from server");
     }
 }
 

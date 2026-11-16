@@ -148,11 +148,10 @@ PrimaryClient::setClipboard(ClipboardID id, const IClipboard* clipboard)
 {
     // ignore if this clipboard is already clean
     if (m_clipboardDirty[id]) {
-        // this clipboard is now clean
-        m_clipboardDirty[id] = false;
-
         // set clipboard
-        m_screen->setClipboard(id, clipboard);
+        if (m_screen->setClipboard(id, clipboard)) {
+            m_clipboardDirty[id] = false;
+        }
     }
 }
 

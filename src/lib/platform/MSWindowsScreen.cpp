@@ -387,15 +387,16 @@ MSWindowsScreen::setClipboard(ClipboardID, const IClipboard* src)
     MSWindowsClipboard dst(m_window);
     if (src != nullptr) {
         // save clipboard data
-        return Clipboard::copy(&dst, src);
+        const bool success = Clipboard::copy(&dst, src);
+        if (success) {
+            m_clipboardPending = false;
+        }
+        return success;
     }
     else {
-        // assert clipboard ownership
-        if (!dst.open(0)) {
-            return false;
-        }
-        dst.clear();
-        dst.close();
+        // Keep local data until the remote contents are actually available.
+        m_clipboardPendingSequence = GetClipboardSequenceNumber();
+        m_clipboardPending = true;
         return true;
     }
 }
@@ -403,6 +404,16 @@ MSWindowsScreen::setClipboard(ClipboardID, const IClipboard* src)
 void
 MSWindowsScreen::checkClipboards()
 {
+    if (m_clipboardPending) {
+        if (GetClipboardSequenceNumber() == m_clipboardPendingSequence) return;
+        m_clipboardPending = false;
+        if (!MSWindowsClipboard::is_owned_by_us()) {
+            m_ownClipboard = false;
+            sendClipboardEvent(EventType::CLIPBOARD_GRABBED, kClipboardClipboard);
+            sendClipboardEvent(EventType::CLIPBOARD_GRABBED, kClipboardSelection);
+            return;
+        }
+    }
     // if we think we own the clipboard but we don't then somebody
     // grabbed the clipboard on this screen without us knowing.
     // tell the server that this screen grabbed the clipboard.
@@ -496,8 +507,7 @@ bool
 MSWindowsScreen::getClipboard(ClipboardID, IClipboard* dst) const
 {
     MSWindowsClipboard src(m_window);
-    Clipboard::copy(dst, &src);
-    return true;
+    return Clipboard::copy(dst, &src);
 }
 
 void MSWindowsScreen::getShape(std::int32_t& x, std::int32_t& y, std::int32_t& w,
@@ -1447,6 +1457,16 @@ MSWindowsScreen::onDisplayChange()
 bool
 MSWindowsScreen::onClipboardChange()
 {
+    if (m_clipboardPending) {
+        if (GetClipboardSequenceNumber() == m_clipboardPendingSequence) return true;
+        m_clipboardPending = false;
+        if (!MSWindowsClipboard::is_owned_by_us()) {
+            m_ownClipboard = false;
+            sendClipboardEvent(EventType::CLIPBOARD_GRABBED, kClipboardClipboard);
+            sendClipboardEvent(EventType::CLIPBOARD_GRABBED, kClipboardSelection);
+            return true;
+        }
+    }
     // now notify client that somebody changed the clipboard (unless
     // we're the owner).
     if (!MSWindowsClipboard::is_owned_by_us()) {

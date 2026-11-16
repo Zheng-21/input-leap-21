@@ -148,6 +148,8 @@ public:
     */
     void disconnect();
 
+    size_t maximumClipboardSize() const { return m_maximumClipboardSize; }
+
     //! Create a new thread and use it to send file to client
     void sendFileToClient(const char* filename);
 
@@ -383,6 +385,7 @@ private:
         std::string m_clipboardData;
         std::string m_clipboardOwner;
         std::uint32_t m_clipboardSeqNum;
+        bool m_valid = false;
     };
 
     // the primary screen client

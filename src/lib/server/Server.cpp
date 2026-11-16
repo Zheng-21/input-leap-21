@@ -460,6 +460,9 @@ void Server::switchScreen(BaseClientProxy* dst, std::int32_t x, std::int32_t y, 
 			// send the clipboard data to new active screen
 			for (ClipboardID id = 0; id < kClipboardEnd; ++id) {
 				// Hackity hackity hack
+				if (!m_clipboards[id].m_valid) {
+					continue;
+				}
 				if (m_clipboards[id].m_clipboard.marshall().size() > m_maximumClipboardSize) {
 					continue;
 				}
@@ -1196,6 +1199,7 @@ void Server::handle_clipboard_grabbed(const Event& event, BaseClientProxy* grabb
          info.m_id, clipboard.m_clipboardOwner.c_str());
 	clipboard.m_clipboardOwner  = getName(grabber);
     clipboard.m_clipboardSeqNum = info.m_sequenceNumber;
+	clipboard.m_valid = false;
 
 	// clear the clipboard data (since it's not known at this point)
 	if (clipboard.m_clipboard.open(0)) {
@@ -1477,7 +1481,7 @@ void Server::onClipboardChanged(BaseClientProxy* sender, ClipboardID id, std::ui
 			m_maximumClipboardSize);
 		return;
 	}
-	if (data == clipboard.m_clipboardData) {
+	if (clipboard.m_valid && data == clipboard.m_clipboardData) {
 		LOG_DEBUG("ignored screen \"%s\" update of clipboard %d (unchanged)", clipboard.m_clipboardOwner.c_str(), id);
 		return;
 	}
@@ -1485,6 +1489,7 @@ void Server::onClipboardChanged(BaseClientProxy* sender, ClipboardID id, std::ui
 	// got new data
 	LOG_INFO("screen \"%s\" updated clipboard %d", clipboard.m_clipboardOwner.c_str(), id);
 	clipboard.m_clipboardData = data;
+	clipboard.m_valid = true;
 
 	// tell all clients except the sender that the clipboard is dirty
     for (auto index = m_clients.begin(); index != m_clients.end(); ++index) {

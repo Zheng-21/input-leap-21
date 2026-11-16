@@ -272,8 +272,7 @@ void ClientProxy1_6::handle_clipboard_sending_event(const Event& event)
 
 bool ClientProxy1_6::getClipboard(ClipboardID id, IClipboard* clipboard) const
 {
-    Clipboard::copy(clipboard, &m_clipboard[id].m_clipboard);
-    return true;
+    return Clipboard::copy(clipboard, &m_clipboard[id].m_clipboard);
 }
 
 void ClientProxy1_6::getShape(std::int32_t& x, std::int32_t& y, std::int32_t& w,
@@ -454,20 +453,22 @@ bool ClientProxy1_6::recvInfo()
 bool ClientProxy1_6::recvClipboard()
 {
     // parse message
-    static std::string dataCached;
     ClipboardID id;
     std::uint32_t seq;
 
-    int r = ClipboardChunk::assemble(getStream(), dataCached, id, seq);
+    int r = clipboard_assembler_.assemble(getStream(), id, seq, m_server->maximumClipboardSize());
 
     if (r == kStart) {
-        size_t size = ClipboardChunk::getExpectedSize();
+        size_t size = clipboard_assembler_.expectedSize(id);
         LOG_DEBUG("receiving clipboard %d size=%zd", id, size);
     } else if (r == kFinish) {
         LOG_DEBUG("received client \"%s\" clipboard %d seqnum=%d, size=%zd",
-                getName().c_str(), id, seq, dataCached.size());
+                getName().c_str(), id, seq, clipboard_assembler_.data(id).size());
         // save clipboard
-        m_clipboard[id].m_clipboard.unmarshall(dataCached, 0);
+        if (!m_clipboard[id].m_clipboard.unmarshall(clipboard_assembler_.data(id), 0)) {
+            LOG_WARN("invalid clipboard data from client %s", getName().c_str());
+            return false;
+        }
         m_clipboard[id].m_sequenceNumber = seq;
 
         // notify
@@ -477,7 +478,10 @@ bool ClientProxy1_6::recvClipboard()
         m_events->add_event(EventType::CLIPBOARD_CHANGED, get_event_target(),
                             create_event_data<ClipboardInfo>(info));
     }
-
+    if (r == kError) {
+        LOG_WARN("invalid or oversized clipboard transfer from client %s", getName().c_str());
+        return false;
+    }
     return true;
 }
 

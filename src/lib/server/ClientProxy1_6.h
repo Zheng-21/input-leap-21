@@ -21,6 +21,7 @@
 #include "server/ClientProxy.h"
 #include "base/Fwd.h"
 #include "inputleap/Clipboard.h"
+#include "inputleap/ClipboardChunk.h"
 #include "inputleap/protocol_types.h"
 
 namespace inputleap {
@@ -119,6 +120,7 @@ protected:
     double m_keepAliveRate;
     EventQueueTimer* m_keepAliveTimer;
     Server* m_server;
+    ClipboardAssembler clipboard_assembler_;
 };
 
 } // namespace inputleap

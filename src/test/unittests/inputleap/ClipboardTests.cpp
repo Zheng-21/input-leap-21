@@ -398,4 +398,38 @@ TEST(ClipboardTests, copy_withSingleText_clipboardsAreEqual)
     EXPECT_EQ("test string!", actual);
 }
 
+TEST(ClipboardTests, unmarshall_rejectsTruncatedDataWithoutClearingClipboard)
+{
+    Clipboard clipboard;
+    clipboard.open(0);
+    clipboard.add(IClipboard::kText, "preserved");
+    clipboard.close();
+
+    const std::string truncated("\0\0\0\1\0\0\0\0\0\0\0\5abc", 15);
+    EXPECT_FALSE(clipboard.unmarshall(truncated, 1));
+    clipboard.open(0);
+    EXPECT_EQ("preserved", clipboard.get(IClipboard::kText));
+    clipboard.close();
+}
+
+TEST(ClipboardTests, copy_readFailureDoesNotClearDestination)
+{
+    class FailingClipboard : public Clipboard {
+    public:
+        bool succeeded() const override { return false; }
+    } source;
+    source.open(0);
+    source.add(IClipboard::kText, "unreadable");
+    source.close();
+    Clipboard destination;
+    destination.open(0);
+    destination.add(IClipboard::kText, "preserved");
+    destination.close();
+
+    EXPECT_FALSE(Clipboard::copy(&destination, &source));
+    destination.open(0);
+    EXPECT_EQ("preserved", destination.get(IClipboard::kText));
+    destination.close();
+}
+
 } // namespace inputleap

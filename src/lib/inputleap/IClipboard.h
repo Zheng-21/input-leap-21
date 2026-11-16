@@ -134,6 +134,9 @@ public:
     */
     virtual std::string get(EFormat) const = 0;
 
+    // Reports failures during the current open/close operation.
+    virtual bool succeeded() const { return true; }
+
     //! Marshall clipboard data
     /*!
     Merge \p clipboard's data into a single buffer that can be later
@@ -146,7 +149,7 @@ public:
     Extract marshalled clipboard data and store it in \p clipboard.
     Sets the clipboard time to \c time.
     */
-    static void unmarshall(IClipboard* clipboard, const std::string& data, Time time);
+    static bool unmarshall(IClipboard* clipboard, const std::string& data, Time time);
 
     //! Copy clipboard
     /*!

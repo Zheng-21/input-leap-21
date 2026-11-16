@@ -64,6 +64,7 @@ public:
     virtual Time getTime() const;
     virtual bool has(EFormat) const;
     virtual std::string get(EFormat) const;
+    bool succeeded() const override { return m_succeeded; }
 
     void setFacade(IMSWindowsClipboardFacade& facade);
 
@@ -81,6 +82,7 @@ private:
 
     HWND m_window;
     mutable Time m_time;
+    mutable bool m_succeeded = true;
     ConverterList m_converters;
     static UINT            s_ownershipFormat;
     IMSWindowsClipboardFacade* m_facade;

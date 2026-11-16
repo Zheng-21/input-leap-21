@@ -260,7 +260,10 @@ Client::leave()
 void
 Client::setClipboard(ClipboardID id, const IClipboard* clipboard)
 {
-     m_screen->setClipboard(id, clipboard);
+    if (!m_screen->setClipboard(id, clipboard)) {
+        LOG_WARN("failed to update local clipboard %d", id);
+        return;
+    }
     m_ownClipboard[id]  = false;
     m_sentClipboard[id] = false;
 }
@@ -338,21 +341,16 @@ Client::resetOptions()
 void
 Client::setOptions(const OptionsList& options)
 {
-    for (auto index = options.begin(); index != options.end(); ++index) {
-        const OptionID id       = *index;
+    for (size_t index = 0; index + 1 < options.size(); index += 2) {
+        const OptionID id = options[index];
+        const auto value = options[index + 1];
         if (id == kOptionClipboardSharing) {
-            index++;
-            if (*index == static_cast<OptionValue>(false)) {
+            if (value == static_cast<OptionValue>(false)) {
                 LOG_NOTE("clipboard sharing is disabled");
             }
-            m_enableClipboard = *index;
-
-            break;
+            m_enableClipboard = value;
         } else if (id == kOptionClipboardSharingSize) {
-            index++;
-            if (index != options.end()) {
-                m_maximumClipboardSize = *index;
-            }
+            m_maximumClipboardSize = value;
         }
     }
 
@@ -386,7 +384,10 @@ Client::sendClipboard(ClipboardID id)
     if (clipboard.open(m_timeClipboard[id])) {
         clipboard.close();
     }
-    m_screen->getClipboard(id, &clipboard);
+    if (!m_screen->getClipboard(id, &clipboard)) {
+        LOG_WARN("failed to read local clipboard %d; skipping transfer", id);
+        return;
+    }
 
     // check time
     if (m_timeClipboard[id] == 0 ||
@@ -396,9 +397,9 @@ Client::sendClipboard(ClipboardID id)
 
         // marshall the data
         std::string data = clipboard.marshall();
-        if (data.size() >= m_maximumClipboardSize) {
+        if (data.size() > m_maximumClipboardSize) {
             LOG_NOTE("Skipping clipboard transfer because the clipboard"
-                " contents exceeds the %zi MB size limit set by the server",
+                " contents exceeds the %zi byte size limit set by the server",
                 m_maximumClipboardSize);
             return;
         }
